@@ -1,0 +1,63 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from IPython.display import HTML
+
+# Constants for simulation (You should already have these defined earlier)
+G = 6.67430e-11  # Gravitational constant (m^3 kg^-1 s^-2)
+mass_star = 1e30  # Mass of each star (kg)
+dt = 1e3  # Time step (seconds)
+T_max = 1e6  # Total simulation time (seconds)
+N = 10000  # Number of stars
+
+# Initial positions and velocities (you should have already defined these)
+np.random.seed(42)
+positions = np.random.uniform(-1e11, 1e11, size=(N, 2))
+velocities = np.random.uniform(-1000, 1000, size=(N, 2))
+
+# Function to compute the gravitational forces on each star
+def compute_forces(positions):
+    forces = np.zeros_like(positions)
+    for i in range(N):
+        for j in range(i + 1, N):
+            r = positions[j] - positions[i]
+            r_magnitude = np.linalg.norm(r)
+            if r_magnitude > 0:
+                force_magnitude = G * mass_star**2 / r_magnitude**2
+                force_direction = r / r_magnitude
+                force = force_magnitude * force_direction
+                forces[i] += force
+                forces[j] -= force
+    return forces
+
+# Function to update positions and velocities of stars at each time step
+def update(frame):
+    global positions, velocities
+    
+    forces = compute_forces(positions)
+    accelerations = forces / mass_star
+    velocities += accelerations * dt
+    positions += velocities * dt
+    
+    scat.set_offsets(positions)
+    return scat,
+
+# Set up the plot
+fig, ax = plt.subplots(figsize=(8, 8))
+ax.set_xlim(-2e11, 2e11)
+ax.set_ylim(-2e11, 2e11)
+ax.set_title("Star Cluster Simulation")
+
+# Scatter plot for the stars
+scat = ax.scatter(positions[:, 0], positions[:, 1], color='blue', s=10)
+
+# Create the animation and save it as PNG images (without ffmpeg)
+ani = FuncAnimation(fig, update, frames=int(T_max // dt), interval=50, blit=False)
+
+# Save the animation as PNG sequence using Pillow writer
+ani.save('star_cluster_animation.gif', writer='pillow', fps=50)
+
+# Display the animation inline in the Jupyter notebook (using HTML5 video or GIF)
+HTML(ani.to_html5_video())  # This part will display a video if you need
+
+ani.save('frame_{:03d}.png', writer='pillow')
