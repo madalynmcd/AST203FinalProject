@@ -10,7 +10,7 @@ G = 1.0             # Gravitational constant (using N-body units)
 N = 500             # Number of particles
 total_mass = 1.0    # Total mass of the system
 m = total_mass / N  # Mass of each individual particle
-t_max = 30          # Simulation time (seconds in simulation units)
+t_max = 12          # Simulation time (seconds in simulation units)
 dt = 0.01           # Time step for integration
 steps = int(t_max / dt)  # Total number of integration steps (3000 steps)
 
