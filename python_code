@@ -2,32 +2,30 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import animation
+from tqdm import tqdm  # Progress bar
 
 # --- PARAMETERS ---
-np.random.seed(42) # For reproducibility
-G = 1.0            # Gravitational constant (using N-body units)
-N = 500            # Number of particles
-total_mass = 1.0   # Total mass of the system
-m = total_mass / N # Mass of each individual particle
-t_max = 30         # Simulation time (seconds in simulation units)
-dt = 0.01          # Time step for integration
-steps = int(t_max / dt) # Total number of integration steps (3000 steps)
+np.random.seed(42)  # For reproducibility
+G = 1.0             # Gravitational constant (using N-body units)
+N = 500             # Number of particles
+total_mass = 1.0    # Total mass of the system
+m = total_mass / N  # Mass of each individual particle
+t_max = 30          # Simulation time (seconds in simulation units)
+dt = 0.01           # Time step for integration
+steps = int(t_max / dt)  # Total number of integration steps (3000 steps)
 
-# Animation parameters to make the GIF last exactly 30 seconds
-gif_fps = 100      # Frames per second for the GIF (3000 steps / 30 seconds = 100 fps)
-animation_interval_ms = 1000 / gif_fps # Milliseconds between frames (1000 ms / 100 fps = 10 ms)
+# Animation parameters
+gif_fps = 100
+animation_interval_ms = 1000 / gif_fps
 
 
 # --- INITIAL CONDITIONS ---
 def random_sphere_distribution(N, radius=1.0):
-    """
-    Generates N particles uniformly distributed within a sphere.
-    """
     u = np.random.uniform(0, 1, N)
     costheta = np.random.uniform(-1, 1, N)
     phi = np.random.uniform(0, 2 * np.pi, N)
     theta = np.arccos(costheta)
-    r = radius * u**(1/3) # Correct distribution for uniform volume density
+    r = radius * u**(1/3)
     x = r * np.sin(theta) * np.cos(phi)
     y = r * np.sin(theta) * np.sin(phi)
     z = r * np.cos(theta)
@@ -39,18 +37,15 @@ def random_velocities(N, scale=0.05):
 positions = random_sphere_distribution(N)
 velocities = random_velocities(N)
 
+
 # --- GRAVITY CALCULATION ---
 def compute_accelerations_and_potential_energy(positions, m, G, softening=1e-5):
-    """
-    Computes accelerations for all particles and the total potential energy of the system.
-    """
     acc = np.zeros_like(positions)
     potential_energy = 0.0
 
     for i in range(N):
         diff = positions - positions[i]
         dist_sq = np.sum(diff**2, axis=1)
-
         dist_denom_acc = (dist_sq + softening**2)**1.5
         non_self_indices = np.where(dist_sq != 0)[0]
         acc[i] = G * np.sum(m * diff[non_self_indices] / dist_denom_acc[non_self_indices, np.newaxis], axis=0)
@@ -61,13 +56,9 @@ def compute_accelerations_and_potential_energy(positions, m, G, softening=1e-5):
 
     return acc, potential_energy
 
-# --- LEAPFROG INTEGRATION ---
+
+# --- LEAPFROG INTEGRATION WITH PROGRESS BAR ---
 def leapfrog(positions, velocities, dt, steps, m, G):
-    """
-    Performs Leapfrog integration for the N-body simulation.
-    Tracks and returns histories of positions, kinetic energy, potential energy,
-    total energy, virial ratio, and the initial kinetic/potential energies.
-    """
     pos_history = [positions.copy()]
     kin_energy_history = []
     pot_energy_history = []
@@ -75,42 +66,23 @@ def leapfrog(positions, velocities, dt, steps, m, G):
     virial_ratio_history = []
 
     vel = velocities.copy()
-
-    # Calculate initial state energies BEFORE the loop starts
-    initial_acc, initial_potential_energy = compute_accelerations_and_potential_energy(positions, m, G)
-    initial_kinetic_energy = 0.5 * m * np.sum(np.sum(velocities**2, axis=1)) # Use initial velocities
-
-    # Store the initial energies to calculate changes later
+    acc, initial_potential_energy = compute_accelerations_and_potential_energy(positions, m, G)
+    initial_kinetic_energy = 0.5 * m * np.sum(np.sum(velocities**2, axis=1))
     initial_kin_e = initial_kinetic_energy
     initial_pot_e = initial_potential_energy
 
-    # Set initial acceleration for the first half-step velocity update
-    acc = initial_acc
-
-    # Loop through each time step
-    for step in range(steps):
-        # 1. Update velocities by half step
+    for step in tqdm(range(steps), desc="Simulating", ncols=80):
         vel_half = vel + 0.5 * acc * dt
-
-        # 2. Update positions by full step
         positions += vel_half * dt
-
-        # 3. Recalculate accelerations and potential energy at the new positions
         acc, current_potential_energy = compute_accelerations_and_potential_energy(positions, m, G)
-
-        # 4. Update velocities by remaining half step
         vel = vel_half + 0.5 * acc * dt
-
-        # Calculate current kinetic energy
         current_kinetic_energy = 0.5 * m * np.sum(np.sum(vel**2, axis=1))
 
-        # Store histories
         pos_history.append(positions.copy())
         kin_energy_history.append(current_kinetic_energy)
         pot_energy_history.append(current_potential_energy)
         total_energy_history.append(current_kinetic_energy + current_potential_energy)
 
-        # Calculate Virial Ratio
         if current_potential_energy != 0:
             virial_ratio_history.append(2 * current_kinetic_energy / abs(current_potential_energy))
         else:
@@ -120,49 +92,36 @@ def leapfrog(positions, velocities, dt, steps, m, G):
             np.array(total_energy_history), np.array(virial_ratio_history),
             initial_kin_e, initial_pot_e)
 
-# Run the simulation
+
+# --- RUN SIMULATION ---
 (trajectory, kin_energies, pot_energies, total_energies, virial_ratios,
  initial_kin_energy_val, initial_pot_energy_val) = leapfrog(positions, velocities, dt, steps, m, G)
+
 
 # --- ANIMATION ---
 fig = plt.figure(figsize=(10, 10))
 ax = fig.add_subplot(111, projection='3d')
-
-# Set initial axis limits
 ax.set_xlim([-1.5, 1.5])
 ax.set_ylim([-1.5, 1.5])
 ax.set_zlim([-1.5, 1.5])
 
-# Initialize text elements for displaying energy and virial ratio on the plot
 energy_text = ax.text2D(0.05, 0.95, "", transform=ax.transAxes, color='red', fontsize=12)
 virial_text = ax.text2D(0.05, 0.90, "", transform=ax.transAxes, color='green', fontsize=12)
 delta_kin_text = ax.text2D(0.05, 0.85, "", transform=ax.transAxes, color='blue', fontsize=12)
 delta_pot_text = ax.text2D(0.05, 0.80, "", transform=ax.transAxes, color='purple', fontsize=12)
 
 def update(sim_step, data, kin_e, pot_e, tot_e, virial_r, initial_ke, initial_pe):
-    """
-    Update function for the animation.
-    """
     ax.clear()
-    
-    # Set limits AFTER clearing the axes
     ax.set_xlim([-1.5, 1.5])
     ax.set_ylim([-1.5, 1.5])
     ax.set_zlim([-1.5, 1.5])
-    
     ax.set_title(f'N-body Simulation (N={N}) - Time: {sim_step * dt:.2f} s', fontsize=14)
-
-    # Plot particles for the current simulation step
     ax.scatter(data[sim_step][:, 0], data[sim_step][:, 1], data[sim_step][:, 2], s=3, c='blue', alpha=0.7)
 
-    # Update energy and virial ratio text.
-    # The energy arrays are one element shorter than pos_history because they start after the first step.
-    # Adjust index for energy arrays: sim_step - 1, but ensure it's not negative.
     energy_idx = max(0, sim_step - 1)
     if energy_idx < len(kin_e):
         current_kin_e = kin_e[energy_idx]
         current_pot_e = pot_e[energy_idx]
-
         delta_ke = current_kin_e - initial_ke
         delta_pe = current_pot_e - initial_pe
 
@@ -171,21 +130,18 @@ def update(sim_step, data, kin_e, pot_e, tot_e, virial_r, initial_ke, initial_pe
         delta_kin_text.set_text(f'ΔKE: {delta_ke:.4f} J')
         delta_pot_text.set_text(f'ΔPE: {delta_pe:.4f} J')
     else:
-        # For the very first frame (sim_step=0), or if somehow out of bounds
         energy_text.set_text(f'Total Energy: Initializing...')
         virial_text.set_text(f'Virial Ratio (2T/|U|): Initializing...')
         delta_kin_text.set_text(f'ΔKE: Initializing...')
         delta_pot_text.set_text(f'ΔPE: Initializing...')
 
-    # Re-add text artists to the current axes after clearing
     ax.add_artist(energy_text)
     ax.add_artist(virial_text)
     ax.add_artist(delta_kin_text)
     ax.add_artist(delta_pot_text)
 
-# Create the animation.
-# frames=range(steps) ensures every single simulation step is animated.
-# interval and fps are adjusted to make the total duration 30 seconds.
+
+# --- CREATE ANIMATION ---
 ani = animation.FuncAnimation(fig, update, frames=range(steps),
                               fargs=(trajectory, kin_energies, pot_energies, total_energies, virial_ratios,
                                      initial_kin_energy_val, initial_pot_energy_val),
